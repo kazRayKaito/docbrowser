@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocBrowser — Scan</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #222; }
+  h1 { margin: 0 0 16px; font-size: 1.4rem; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.82rem; font-weight: bold; }
+  .status-running { background: #d1fae5; color: #065f46; }
+  .status-paused  { background: #fef3c7; color: #92400e; }
+  .status-idle    { background: #e5e7eb; color: #374151; }
+  .progress-bar-bg { background: #e5e7eb; border-radius: 4px; height: 12px; margin: 10px 0; overflow: hidden; }
+  .progress-bar-fill { background: #0070f3; height: 100%; transition: width 0.4s; }
+  .counts { display: flex; gap: 20px; font-size: 0.9rem; }
+  .counts span { color: #555; }
+  .counts strong { color: #222; }
+  .current-file { font-size: 0.82rem; color: #666; margin-top: 8px; word-break: break-all; min-height: 1.1em; }
+  .controls { display: flex; gap: 10px; margin-top: 14px; }
+  .controls button { padding: 7px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.9rem; }
+  .controls button.primary { background: #0070f3; color: #fff; border-color: #0070f3; }
+  .controls button:hover { opacity: 0.85; }
+  h2 { font-size: 1rem; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  th { background: #f9fafb; font-weight: 600; }
+  td { word-break: break-all; }
+  nav a { font-size: 0.85rem; color: #0070f3; text-decoration: none; }
+  #eta { font-size: 0.88rem; color: #555; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>DocBrowser — Scan <nav style="display:inline;margin-left:16px"><a href="/">Search</a></nav></h1>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <strong>Status:</strong>
+    <span class="status-badge status-idle" id="status-badge">Idle</span>
+  </div>
+  <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+  <div class="counts">
+    <span>Done: <strong id="cnt-done">0</strong></span>
+    <span>Failed: <strong id="cnt-failed">0</strong></span>
+    <span>Skipped: <strong id="cnt-skipped">0</strong></span>
+    <span>Total: <strong id="cnt-total">0</strong></span>
+  </div>
+  <div id="eta"></div>
+  <div class="current-file" id="current-file"></div>
+  <div class="controls">
+    <button class="primary" onclick="apiPost('/api/scan/start')">Start Scan</button>
+    <button onclick="apiPost('/api/scan/pause')">Pause</button>
+    <button onclick="apiPost('/api/scan/resume')">Resume</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent Errors (last 50)</h2>
+  <table id="error-table">
+    <thead><tr><th>File</th><th>Error</th></tr></thead>
+    <tbody id="error-body"></tbody>
+  </table>
+</div>
+
+<script>
+function fmtEta(seconds) {
+  if (seconds == null || seconds <= 0) return '';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `ETA: ${h}h ${m}m`;
+  return `ETA: ${m}m`;
+}
+
+function applyState(s) {
+  const badge = document.getElementById('status-badge');
+  if (s.running && !s.paused) {
+    badge.textContent = 'Running'; badge.className = 'status-badge status-running';
+  } else if (s.paused) {
+    badge.textContent = 'Paused'; badge.className = 'status-badge status-paused';
+  } else {
+    badge.textContent = 'Idle'; badge.className = 'status-badge status-idle';
+  }
+
+  const total = s.total_discovered || 0;
+  const done = (s.done || 0) + (s.skipped || 0);
+  const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('cnt-done').textContent = s.done || 0;
+  document.getElementById('cnt-failed').textContent = s.failed || 0;
+  document.getElementById('cnt-skipped').textContent = s.skipped || 0;
+  document.getElementById('cnt-total').textContent = total;
+  document.getElementById('eta').textContent = fmtEta(s.eta_seconds);
+  document.getElementById('current-file').textContent = s.current_file || '';
+}
+
+const es = new EventSource('/api/scan/status');
+es.onmessage = e => applyState(JSON.parse(e.data));
+
+async function apiPost(url) {
+  await fetch(url, { method: 'POST' });
+}
+
+async function loadErrors() {
+  const res = await fetch('/api/scan/errors');
+  if (!res.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('error-body');
+  tbody.innerHTML = '';
+  for (const row of data) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(row.filepath)}</td><td>${esc(row.error_msg)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadErrors();
+setInterval(loadErrors, 30000);
+</script>
+</body>
+</html>

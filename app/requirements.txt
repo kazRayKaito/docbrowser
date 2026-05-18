@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+paddleocr
+paddlepaddle
+pymupdf
+pillow
+pyyaml
+apscheduler
+sse-starlette
+aiosqlite
+numpy
+jinja2

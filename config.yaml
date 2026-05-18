@@ -1,0 +1,36 @@
+smb:
+  host: 192.168.0.212
+  share: d
+  mount_point: /data/docs    # path as seen inside the Docker container
+
+scan:
+  schedule: "02:00"          # daily scan time in local time (HH:MM, 24h)
+  whitelist_extensions:
+    - pdf
+    - jpg
+    - jpeg
+    - png
+    - tiff
+    - tif
+    - gif
+    - bmp
+    - webp
+  blacklist_patterns:
+    - "*/site-packages/*"
+    - "*/node_modules/*"
+    - "*/.git/*"
+    - "*/venv/*"
+    - "*/.venv/*"
+    - "*/__pycache__/*"
+    - "*/dist-packages/*"
+    - "*/build/*"
+    - "*/.DS_Store"
+
+ocr:
+  engine: paddleocr
+  language: japan            # PaddleOCR language code for Japanese
+  fallback_char_threshold: 50  # if extracted char count < this, treat PDF page as scanned
+
+search:
+  results_per_page: 20
+  snippet_length: 200        # characters of context shown around a match

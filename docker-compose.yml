@@ -1,0 +1,15 @@
+services:
+  app:
+    build: ./app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - db_data:/data/db
+      - /Volumes/d:/data/docs:ro    # host SMB mount point → container
+    environment:
+      - TZ=Asia/Tokyo
+
+volumes:
+  db_data:

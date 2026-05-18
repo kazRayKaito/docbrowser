@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocBrowser</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #222; }
+  h1 { margin: 0 0 16px; font-size: 1.4rem; }
+  .search-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+  .search-bar input[type=text] { flex: 1; padding: 8px 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+  .search-bar select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+  .search-bar button { padding: 8px 18px; background: #0070f3; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+  .search-bar button:hover { background: #005ecb; }
+  #summary { font-size: 0.9rem; color: #555; margin-bottom: 12px; min-height: 1.2em; }
+  .result { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
+  .result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .filename { font-weight: bold; font-size: 1rem; }
+  .badge { font-size: 0.72rem; background: #e8f0fe; color: #1a56db; border-radius: 3px; padding: 2px 6px; text-transform: uppercase; }
+  .engine { font-size: 0.75rem; color: #888; }
+  .snippet { font-size: 0.88rem; color: #444; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
+  .actions { display: flex; gap: 10px; }
+  .actions a { font-size: 0.85rem; color: #0070f3; text-decoration: none; }
+  .actions a:hover { text-decoration: underline; }
+  .indexed { font-size: 0.75rem; color: #aaa; margin-left: auto; }
+  .pagination { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+  .pagination button { padding: 6px 14px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+  #no-results { display: none; color: #888; margin-top: 20px; }
+  nav a { font-size: 0.85rem; color: #0070f3; text-decoration: none; }
+</style>
+</head>
+<body>
+<h1>DocBrowser <nav style="display:inline;margin-left:16px"><a href="/scan">Scan</a></nav></h1>
+<div class="search-bar">
+  <input type="text" id="q" placeholder="Search documents…" autofocus>
+  <select id="ext">
+    <option value="">All</option>
+    <option value="pdf">PDF</option>
+    <option value="jpg">JPG</option>
+    <option value="png">PNG</option>
+    <option value="tiff">TIFF</option>
+    <option value="gif">GIF</option>
+    <option value="bmp">BMP</option>
+    <option value="webp">WebP</option>
+  </select>
+  <button onclick="doSearch(1)">Search</button>
+</div>
+<div id="summary"></div>
+<div id="results"></div>
+<div id="no-results">No results found.</div>
+<div class="pagination">
+  <button id="prev" onclick="doSearch(currentPage-1)" disabled>← Prev</button>
+  <span id="page-info"></span>
+  <button id="next" onclick="doSearch(currentPage+1)" disabled>Next →</button>
+</div>
+
+<script>
+let currentPage = 1;
+let totalPages = 1;
+
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch(1);
+});
+
+async function doSearch(page) {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+  const ext = document.getElementById('ext').value;
+  currentPage = page;
+
+  const params = new URLSearchParams({ q, page });
+  if (ext) params.set('ext', ext);
+
+  const res = await fetch('/api/search?' + params);
+  if (!res.ok) { document.getElementById('summary').textContent = 'Search error.'; return; }
+  const data = await res.json();
+
+  totalPages = data.pages || 1;
+  document.getElementById('summary').textContent =
+    data.total === 0 ? '' : `${data.total} results for "${data.query}"`;
+
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+  document.getElementById('no-results').style.display = data.results.length === 0 ? 'block' : 'none';
+
+  for (const r of data.results) {
+    const div = document.createElement('div');
+    div.className = 'result';
+    div.innerHTML = `
+      <div class="result-header">
+        <span class="filename">${esc(r.filename)}</span>
+        <span class="badge">${esc(r.extension)}</span>
+        <span class="engine">${esc(r.ocr_engine || '')}</span>
+        <span class="indexed">${r.indexed_at ? r.indexed_at.replace('T', ' ') : ''}</span>
+      </div>
+      <div class="snippet">${esc(r.snippet)}</div>
+      <div class="actions">
+        <a href="${esc(r.smb_uri)}">Open File</a>
+        <a href="${esc(r.smb_parent)}">Open Folder</a>
+      </div>`;
+    container.appendChild(div);
+  }
+
+  document.getElementById('prev').disabled = currentPage <= 1;
+  document.getElementById('next').disabled = currentPage >= totalPages;
+  document.getElementById('page-info').textContent =
+    data.total > 0 ? `Page ${currentPage} of ${totalPages}` : '';
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
