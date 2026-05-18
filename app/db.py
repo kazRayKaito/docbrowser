@@ -31,7 +31,6 @@ USING fts5(
     file_id UNINDEXED,
     filename,
     full_text,
-    content='',
     tokenize='unicode61'
 );
 """
@@ -92,6 +91,12 @@ async def get_failed_files(limit: int = 50, db_path: str = DB_PATH) -> list:
             return await cur.fetchall()
 
 
+def _fts_query(query: str) -> str:
+    # Append * to each term for prefix matching (needed for Japanese — no spaces between chars)
+    terms = query.strip().split()
+    return " ".join(t + "*" if not t.endswith("*") else t for t in terms) if terms else query
+
+
 async def search(
     query: str,
     ext_filter: Optional[str],
@@ -100,10 +105,11 @@ async def search(
     db_path: str = DB_PATH,
 ) -> tuple[list, int]:
     offset = (page - 1) * per_page
+    fts_q = _fts_query(query)
 
     ext_clause = "AND f.extension = ?" if ext_filter else ""
-    params_count = [query]
-    params_rows = [query]
+    params_count = [fts_q]
+    params_rows = [fts_q]
     if ext_filter:
         params_count.append(ext_filter)
         params_rows.append(ext_filter)

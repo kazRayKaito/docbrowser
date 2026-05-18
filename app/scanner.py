@@ -62,8 +62,8 @@ def classify_file(filepath: str, config: dict) -> str:
 def _get_ocr(config: dict):
     global _ocr_instance
     if _ocr_instance is None:
-        from paddleocr import PaddleOCR
-        _ocr_instance = PaddleOCR(use_angle_cls=True, lang=config["ocr"]["language"])
+        import easyocr
+        _ocr_instance = easyocr.Reader(['ja', 'en'], gpu=False)
     return _ocr_instance
 
 
@@ -75,19 +75,49 @@ def extract_pymupdf(filepath: str) -> tuple[str, int]:
     return "\n".join(pages), len(pages)
 
 
+def _parse_ocr_result(result) -> list[str]:
+    lines = []
+    for res in result:
+        if res is None:
+            continue
+        # EasyOCR returns list of (bbox, text, confidence)
+        if isinstance(res, tuple) and len(res) == 3:
+            _, text, _ = res
+            if text:
+                lines.append(text)
+    return lines
+
+
+MAX_SIDE = 2400
+
+
+def _resize_if_needed(img):
+    import numpy as np
+    from PIL import Image
+    h, w = img.shape[:2]
+    longest = max(h, w)
+    if longest <= MAX_SIDE:
+        return img
+    scale = MAX_SIDE / longest
+    new_w, new_h = int(w * scale), int(h * scale)
+    pil = Image.fromarray(img).resize((new_w, new_h), Image.LANCZOS)
+    return np.array(pil)
+
+
 def extract_paddleocr_pdf(filepath: str, ocr) -> tuple[str, int]:
     import fitz
     import numpy as np
     doc = fitz.open(filepath)
     texts = []
     for i in range(len(doc)):
-        pix = doc[i].get_pixmap(dpi=150)
+        pix = doc[i].get_pixmap(dpi=72)
         img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
         if pix.n == 4:
             img = img[:, :, :3]
-        result = ocr.ocr(img, cls=True)
-        if result and result[0]:
-            lines = [line[1][0] for line in result[0] if line and line[1]]
+        img = _resize_if_needed(img)
+        result = ocr.readtext(img)
+        lines = _parse_ocr_result(result)
+        if lines:
             texts.append("\n".join(lines))
     page_count = len(doc)
     doc.close()
@@ -99,10 +129,9 @@ def extract_paddleocr_image(filepath: str, ocr) -> tuple[str, int]:
     from PIL import Image
     img = Image.open(filepath).convert("RGB")
     arr = np.array(img)
-    result = ocr.ocr(arr, cls=True)
-    lines = []
-    if result and result[0]:
-        lines = [line[1][0] for line in result[0] if line and line[1]]
+    arr = _resize_if_needed(arr)
+    result = ocr.readtext(arr)
+    lines = _parse_ocr_result(result)
     return "\n".join(lines), 1
 
 
