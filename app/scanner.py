@@ -144,6 +144,10 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
     mount_point = config["smb"]["mount_point"]
     candidates = []
     for root, dirs, files in os.walk(mount_point):
+        dirs[:] = [
+            d for d in dirs
+            if not is_blacklisted(os.path.join(root, d, "_"), config)
+        ]
         scan_state["current_file"] = root
         for fname in files:
             fpath = os.path.join(root, fname)
