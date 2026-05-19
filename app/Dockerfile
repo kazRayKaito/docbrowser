@@ -9,13 +9,13 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     libgl1 \
+    tesseract-ocr \
+    tesseract-ocr-jpn \
+    tesseract-ocr-jpn-vert \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Pre-download PaddleOCR models so first run doesn't stall
-RUN python -c "import easyocr; easyocr.Reader(['ja', 'en'], gpu=False)"
 
 COPY . .
 

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse

@@ -1,5 +1,6 @@
 import asyncio
 import fnmatch
+import logging
 import os
 import time
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Optional
 
 import yaml
 
+log = logging.getLogger("uvicorn")
 _ocr_instance = None
 
 
@@ -41,7 +43,7 @@ def classify_file(filepath: str, config: dict) -> str:
     ext = Path(filepath).suffix.lstrip(".").lower()
     image_exts = {"jpg", "jpeg", "png", "tiff", "tif", "gif", "bmp", "webp"}
     if ext in image_exts:
-        return "paddleocr"
+        return "ocr"
     if ext == "pdf":
         try:
             import fitz
@@ -52,18 +54,18 @@ def classify_file(filepath: str, config: dict) -> str:
             doc.close()
             threshold = config["ocr"].get("fallback_char_threshold", 50)
             if len(sample_text.strip()) < threshold:
-                return "paddleocr"
+                return "ocr"
             return "pymupdf"
         except Exception:
-            return "paddleocr"
+            return "ocr"
     return "skip"
 
 
 def _get_ocr(config: dict):
     global _ocr_instance
     if _ocr_instance is None:
-        import easyocr
-        _ocr_instance = easyocr.Reader(['ja', 'en'], gpu=False)
+        import pytesseract
+        _ocr_instance = pytesseract
     return _ocr_instance
 
 
@@ -75,64 +77,52 @@ def extract_pymupdf(filepath: str) -> tuple[str, int]:
     return "\n".join(pages), len(pages)
 
 
-def _parse_ocr_result(result) -> list[str]:
-    lines = []
-    for res in result:
-        if res is None:
-            continue
-        # EasyOCR returns list of (bbox, text, confidence)
-        if isinstance(res, tuple) and len(res) == 3:
-            _, text, _ = res
-            if text:
-                lines.append(text)
-    return lines
+MAX_SIDE = 4000
+# --oem 1: LSTM neural net only (most accurate)
+# --psm 6: assume a uniform block of text (best for full scanned pages)
+TESS_CONFIG = "--oem 1 --psm 6"
 
 
-MAX_SIDE = 2400
+def _preprocess(img):
+    from PIL import ImageOps
+    img = img.convert("L")
+    img = ImageOps.autocontrast(img)
+    return img
 
 
 def _resize_if_needed(img):
-    import numpy as np
     from PIL import Image
-    h, w = img.shape[:2]
-    longest = max(h, w)
+    w, h = img.size
+    longest = max(w, h)
     if longest <= MAX_SIDE:
         return img
     scale = MAX_SIDE / longest
-    new_w, new_h = int(w * scale), int(h * scale)
-    pil = Image.fromarray(img).resize((new_w, new_h), Image.LANCZOS)
-    return np.array(pil)
+    return img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
 
-def extract_paddleocr_pdf(filepath: str, ocr) -> tuple[str, int]:
+def extract_ocr_pdf(filepath: str, ocr) -> tuple[str, int]:
     import fitz
-    import numpy as np
+    from PIL import Image
     doc = fitz.open(filepath)
     texts = []
     for i in range(len(doc)):
-        pix = doc[i].get_pixmap(dpi=72)
-        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-        if pix.n == 4:
-            img = img[:, :, :3]
-        img = _resize_if_needed(img)
-        result = ocr.readtext(img)
-        lines = _parse_ocr_result(result)
-        if lines:
-            texts.append("\n".join(lines))
+        pix = doc[i].get_pixmap(dpi=250)
+        img = Image.frombytes("RGB", [pix.w, pix.h], pix.samples)
+        img = _preprocess(_resize_if_needed(img))
+        text = ocr.image_to_string(img, lang="jpn+jpn_vert", config=TESS_CONFIG)
+        if text.strip():
+            texts.append(text)
     page_count = len(doc)
     doc.close()
     return "\n".join(texts), page_count
 
 
-def extract_paddleocr_image(filepath: str, ocr) -> tuple[str, int]:
-    import numpy as np
+def extract_ocr_image(filepath: str, ocr) -> tuple[str, int]:
     from PIL import Image
     img = Image.open(filepath).convert("RGB")
-    arr = np.array(img)
-    arr = _resize_if_needed(arr)
-    result = ocr.readtext(arr)
-    lines = _parse_ocr_result(result)
-    return "\n".join(lines), 1
+    img = _preprocess(_resize_if_needed(img))
+    text = ocr.image_to_string(img, lang="jpn+jpn_vert", config=TESS_CONFIG)
+    return text, 1
 
 
 async def run_scan(config: dict, db_path: str, scan_state: dict):
@@ -162,6 +152,7 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
             candidates.append(fpath)
 
     scan_state["total_discovered"] = len(candidates)
+    log.info("Scan started: %d files discovered", len(candidates))
 
     ocr = None
     start_time = time.monotonic()
@@ -197,30 +188,35 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
                 continue
 
             if method == "pymupdf":
+                log.info("[pymupdf] %s | %s", Path(fpath).name, fpath)
                 text, page_count = await asyncio.get_event_loop().run_in_executor(
                     None, extract_pymupdf, fpath
                 )
                 engine = "pymupdf"
-            else:
+            elif method == "ocr":
                 if ocr is None:
                     ocr = _get_ocr(config)
                 ext = Path(fpath).suffix.lstrip(".").lower()
                 if ext == "pdf":
+                    log.info("[ocr/pdf] %s | %s", Path(fpath).name, fpath)
                     text, page_count = await asyncio.get_event_loop().run_in_executor(
-                        None, extract_paddleocr_pdf, fpath, ocr
+                        None, extract_ocr_pdf, fpath, ocr
                     )
                 else:
+                    log.info("[ocr/image] %s | %s", Path(fpath).name, fpath)
                     text, page_count = await asyncio.get_event_loop().run_in_executor(
-                        None, extract_paddleocr_image, fpath, ocr
+                        None, extract_ocr_image, fpath, ocr
                     )
-                engine = "paddleocr"
+                engine = "tesseract"
 
             meta = _build_meta(fpath, config, mtime, size, "done", engine, page_count, None)
             file_id = await upsert_file(meta, db_path)
             await upsert_fts(file_id, Path(fpath).name, text, db_path)
+            log.info("[done] %s | pages=%s", Path(fpath).name, page_count)
             scan_state["done"] += 1
 
         except Exception as e:
+            log.error("[failed] %s | %s | error: %s", Path(fpath).name, fpath, e, exc_info=True)
             meta = _build_meta(fpath, config, mtime, size, "failed", None, None, str(e))
             await upsert_file(meta, db_path)
             scan_state["failed"] += 1
@@ -237,6 +233,10 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
     scan_state["running"] = False
     scan_state["current_file"] = ""
     scan_state["eta_seconds"] = None
+    log.info(
+        "Scan finished: done=%d failed=%d skipped=%d",
+        scan_state["done"], scan_state["failed"], scan_state["skipped"],
+    )
 
 
 def _build_meta(fpath, config, mtime, size, status, engine, page_count, error_msg):
