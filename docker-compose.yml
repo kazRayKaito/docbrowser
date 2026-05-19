@@ -6,10 +6,7 @@ services:
       - "8001:8000"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - db_data:/data/db
-      - /Volumes/raydesktop/History/3_Life/2020-03-00_就活:/data/docs:ro    # host SMB mount point → container
+      - /Volumes/MacSSD-4TB_Libraries/libraries/docbrowser_library:/data/db
+      - /Volumes/raydesktop:/data/docs:ro
     environment:
       - TZ=Asia/Tokyo
-
-volumes:
-  db_data:
