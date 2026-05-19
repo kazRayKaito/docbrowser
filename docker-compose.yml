@@ -5,7 +5,7 @@ services:
     ports:
       - "8001:8000"
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - /Volumes/MacSSD-4TB_Libraries/libraries/docbrowser_library/config.yaml:/app/config.yaml:ro
       - /Volumes/MacSSD-4TB_Libraries/libraries/docbrowser_library:/data/db
       - /Volumes/raydesktop:/data/docs:ro
     environment:
