@@ -10,9 +10,10 @@
   h1 { margin: 0 0 16px; font-size: 1.4rem; }
   .card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
   .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.82rem; font-weight: bold; }
-  .status-running { background: #d1fae5; color: #065f46; }
-  .status-paused  { background: #fef3c7; color: #92400e; }
-  .status-idle    { background: #e5e7eb; color: #374151; }
+  .status-running    { background: #d1fae5; color: #065f46; }
+  .status-paused     { background: #fef3c7; color: #92400e; }
+  .status-idle       { background: #e5e7eb; color: #374151; }
+  .status-discovering{ background: #dbeafe; color: #1e40af; }
   .progress-bar-bg { background: #e5e7eb; border-radius: 4px; height: 12px; margin: 10px 0; overflow: hidden; }
   .progress-bar-fill { background: #0070f3; height: 100%; transition: width 0.4s; }
   .counts { display: flex; gap: 20px; font-size: 0.9rem; }
@@ -75,8 +76,10 @@ function fmtEta(seconds) {
 
 function applyState(s) {
   const badge = document.getElementById('status-badge');
-  if (s.running && !s.paused) {
-    badge.textContent = 'Running'; badge.className = 'status-badge status-running';
+  if (s.phase === 'discovering') {
+    badge.textContent = 'Discovering…'; badge.className = 'status-badge status-discovering';
+  } else if (s.running && !s.paused) {
+    badge.textContent = 'Scanning'; badge.className = 'status-badge status-running';
   } else if (s.paused) {
     badge.textContent = 'Paused'; badge.className = 'status-badge status-paused';
   } else {
@@ -92,7 +95,13 @@ function applyState(s) {
   document.getElementById('cnt-skipped').textContent = s.skipped || 0;
   document.getElementById('cnt-total').textContent = total;
   document.getElementById('eta').textContent = fmtEta(s.eta_seconds);
-  document.getElementById('current-file').textContent = s.current_file || '';
+
+  const cf = document.getElementById('current-file');
+  if (s.phase === 'discovering') {
+    cf.textContent = s.current_file ? 'Searching: ' + s.current_file : '';
+  } else {
+    cf.textContent = s.current_file || '';
+  }
 }
 
 const es = new EventSource('/api/scan/status');

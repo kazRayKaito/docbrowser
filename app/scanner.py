@@ -131,6 +131,7 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
     scan_state.update({
         "running": True,
         "paused": False,
+        "phase": "discovering",
         "total_discovered": 0,
         "done": 0,
         "failed": 0,
@@ -143,6 +144,7 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
     mount_point = config["smb"]["mount_point"]
     candidates = []
     for root, dirs, files in os.walk(mount_point):
+        scan_state["current_file"] = root
         for fname in files:
             fpath = os.path.join(root, fname)
             if not is_whitelisted(fpath, config):
@@ -150,9 +152,13 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
             if is_blacklisted(fpath, config):
                 continue
             candidates.append(fpath)
+        scan_state["total_discovered"] = len(candidates)
+        log.info("Discovering: %s (%d files so far)", root, len(candidates))
+        await asyncio.sleep(0)
 
-    scan_state["total_discovered"] = len(candidates)
-    log.info("Scan started: %d files discovered", len(candidates))
+    scan_state["phase"] = "scanning"
+    scan_state["current_file"] = ""
+    log.info("Discovery done: %d files to process", len(candidates))
 
     ocr = None
     start_time = time.monotonic()
@@ -231,6 +237,7 @@ async def run_scan(config: dict, db_path: str, scan_state: dict):
         await asyncio.sleep(0)  # yield to event loop
 
     scan_state["running"] = False
+    scan_state["phase"] = "idle"
     scan_state["current_file"] = ""
     scan_state["eta_seconds"] = None
     log.info(
