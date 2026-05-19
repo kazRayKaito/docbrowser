@@ -37,6 +37,7 @@ scan:
     - "*/Videos/*"
     - "*/OB_Folder_Kaito/*"
     - "*/VisualStudio/*"
+    - "*/MobileSync/*"
 
 ocr:
   engine: paddleocr
