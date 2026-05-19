@@ -1,12 +1,18 @@
 services:
   app:
+    container_name: docbrowser
     build: ./app
     restart: unless-stopped
-    ports:
-      - "8001:8000"
+    expose:
+      - "8000"
     volumes:
       - /Volumes/MacSSD-4TB_Libraries/libraries/docbrowser_library/config.yaml:/app/config.yaml:ro
       - /Volumes/MacSSD-4TB_Libraries/libraries/docbrowser_library:/data/db
       - /Volumes/raydesktop:/data/docs:ro
     environment:
       - TZ=Asia/Tokyo
+
+networks:
+  default:
+    external: true
+    name: npm
