@@ -24,6 +24,7 @@
   .actions a { font-size: 0.85rem; color: #0070f3; text-decoration: none; }
   .actions a:hover { text-decoration: underline; }
   .indexed { font-size: 0.75rem; color: #aaa; margin-left: auto; }
+  mark { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; }
   .pagination { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
   .pagination button { padding: 6px 14px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
   .pagination button:disabled { opacity: 0.4; cursor: default; }
@@ -95,8 +96,9 @@ async function doSearch(page) {
         <span class="engine">${esc(r.ocr_engine || '')}</span>
         <span class="indexed">${r.indexed_at ? r.indexed_at.replace('T', ' ') : ''}</span>
       </div>
-      <div class="snippet">${esc(r.snippet)}</div>
+      <div class="snippet">${highlight(r.snippet, q)}</div>
       <div class="actions">
+        <a href="/preview/${r.id}" target="_blank">Preview</a>
         <a href="${esc(r.smb_uri)}">Open File</a>
         <a href="${esc(r.smb_parent)}">Open Folder</a>
       </div>`;
@@ -112,6 +114,15 @@ async function doSearch(page) {
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function highlight(text, query) {
+  if (!text || !query) return esc(text);
+  const terms = query.trim().split(/\s+/).filter(t => t.length > 0);
+  if (!terms.length) return esc(text);
+  const escaped = esc(text);
+  const pattern = terms.map(t => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return escaped.replace(new RegExp('(' + pattern + ')', 'gi'), '<mark>$1</mark>');
 }
 </script>
 </body>

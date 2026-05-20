@@ -8,7 +8,7 @@ services:
     volumes:
       - /Volumes/MacSSD-4TB_Libraries/libraries/docbrowser_library/config.yaml:/app/config.yaml:ro
       - /Volumes/MacSSD-4TB_Libraries/libraries/docbrowser_library:/data/db
-      - /Volumes/raydesktop/History/3_Life/2020-03-00_就活/0_ES:/data/docs:ro
+      - /Volumes/raydesktop/History/3_Life/2021-04-01_社会人:/data/docs:ro
     environment:
       - TZ=Asia/Tokyo
 

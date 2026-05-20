@@ -1,14 +1,16 @@
 import asyncio
 import json
 import math
+import mimetypes
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
-
+import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 from sse_starlette.sse import EventSourceResponse
@@ -76,6 +78,25 @@ async def scan_page(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/preview/{file_id}")
+async def preview_file(file_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT filepath FROM files WHERE id = ?", (file_id,)) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return JSONResponse(status_code=404, content={"error": "not found"})
+    filepath = row["filepath"]
+    if not os.path.exists(filepath):
+        return JSONResponse(status_code=404, content={"error": "file not on disk"})
+    mime, _ = mimetypes.guess_type(filepath)
+    return FileResponse(
+        filepath,
+        media_type=mime or "application/octet-stream",
+        headers={"Content-Disposition": "inline"},
+    )
 
 
 @app.post("/api/scan/start")

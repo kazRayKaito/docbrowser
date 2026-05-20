@@ -38,6 +38,7 @@ scan:
     - "*/OB_Folder_Kaito/*"
     - "*/VisualStudio/*"
     - "*/MobileSync/*"
+    - "*/$RECYCLE.BIN/*"
 
 ocr:
   engine: paddleocr
